@@ -155,6 +155,17 @@ DATABASE_URL="postgresql://user:password@host/database?sslmode=require"
 
 # OpenAI API Key (for AI transformation)
 OPENAI_API_KEY="sk-..."
+
+# Google Search API (Optional - for Phase 2)
+# Option 1: SerpAPI (recommended)
+SERP_API_KEY="your-serpapi-key"
+
+# Option 2: Google Custom Search API
+GOOGLE_API_KEY="your-google-api-key"
+GOOGLE_CX="your-google-custom-search-engine-id"
+
+# API Base URL (for Phase 2 script)
+API_BASE_URL="http://localhost:3000"
 \`\`\`
 
 **Where to get these:**
@@ -169,15 +180,26 @@ OPENAI_API_KEY="sk-..."
    - Navigate to API Keys section
    - Create a new secret key
 
+3. **SERP_API_KEY** (for Phase 2):
+   - Sign up at [serpapi.com](https://serpapi.com)
+   - Get your API key from the dashboard
+   - Free tier includes 100 searches/month
+
+4. **GOOGLE_API_KEY + GOOGLE_CX** (Alternative to SerpAPI):
+   - Go to [Google Cloud Console](https://console.cloud.google.com)
+   - Enable Custom Search API
+   - Create a Custom Search Engine at [programmablesearchengine.google.com](https://programmablesearchengine.google.com)
+   - Get your API key and Search Engine ID
+
 ### Step 4: Initialize Database
 
 Run the SQL schema to create tables:
 
 \`\`\`bash
 # If you have psql installed
-psql $DATABASE_URL -f scripts/01-init-schema.sql
+psql $DATABASE_URL -f scripts/01-init-db.sql
 
-# OR copy the contents of scripts/01-init-schema.sql 
+# OR copy the contents of scripts/01-init-db.sql 
 # and run it in your Neon SQL editor
 \`\`\`
 
@@ -199,11 +221,30 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Step 6: Test the System
 
 1. Navigate to the **Dashboard** (`/dashboard`)
-2. Click **"Scrape Now"** to fetch articles from beyondchats.com/blogs
+2. Click **"Scrape Now"** to fetch the 5 oldest articles from beyondchats.com/blogs
 3. Wait for articles to appear in the dashboard
 4. Click on any article card to view details
 5. Click **"Transform with AI"** to generate AI-enhanced content
 6. View the side-by-side comparison of original vs. transformed content
+
+### Step 7: Run Phase 2 Transformation Script (Optional)
+
+The Phase 2 script automatically transforms articles using Google Search results:
+
+\`\`\`bash
+# Make sure your dev server is running first
+npm run dev
+
+# In another terminal, run the transformation script
+npx tsx scripts/transform-article.ts
+\`\`\`
+
+This script will:
+1. Fetch pending articles from the API
+2. Search Google for each article title
+3. Scrape the first 2 reference articles from search results
+4. Transform articles using LLM to match reference article style
+5. Update articles via API with citations
 
 ## Project Structure
 
@@ -235,10 +276,13 @@ beyondchats-blog-system/
 │   ├── db.ts                         # Neon database client
 │   ├── scraper.ts                    # Web scraping logic
 │   ├── ai.ts                         # AI transformation logic
+│   ├── google-search.ts              # Google Search integration
+│   ├── reference-scraper.ts          # Reference article scraper
 │   ├── types.ts                      # TypeScript types
 │   └── utils.ts                      # Utility functions
 ├── scripts/
-│   └── 01-init-schema.sql            # Database schema
+│   ├── 01-init-db.sql                # Database schema
+│   └── transform-article.ts         # Phase 2 transformation script
 ├── .env.example                      # Environment variables template
 ├── .env.local                        # Your local environment (gitignored)
 ├── package.json
@@ -316,14 +360,49 @@ Get all citations for a specific article.
 \`\`\`json
 [
   {
-    "id": 1,
-    "article_id": 1,
-    "title": "Source Title",
-    "url": "https://example.com",
-    "relevant_quote": "Quote from source",
+    "id": "uuid",
+    "article_id": "uuid",
+    "source_title": "Source Title",
+    "source_url": "https://example.com",
+    "citation_text": "Quote from source",
     "created_at": "2024-01-20T11:00:00Z"
   }
 ]
+\`\`\`
+
+### POST `/api/articles/[id]/citations`
+Add a citation to an article.
+
+**Request Body:**
+\`\`\`json
+{
+  "url": "https://example.com",
+  "title": "Source Title",
+  "text": "Optional citation text"
+}
+\`\`\`
+
+### PUT `/api/articles/[id]`
+Update an article.
+
+**Request Body:**
+\`\`\`json
+{
+  "title": "Updated Title",
+  "updated_content": "Updated content",
+  "status": "completed"
+}
+\`\`\`
+
+### DELETE `/api/articles/[id]`
+Delete an article.
+
+**Response:**
+\`\`\`json
+{
+  "success": true,
+  "message": "Article deleted"
+}
 \`\`\`
 
 ## Database Schema
@@ -331,35 +410,36 @@ Get all citations for a specific article.
 ### `articles` Table
 | Column | Type | Description |
 |--------|------|-------------|
-| id | SERIAL | Primary key |
+| id | UUID | Primary key |
 | title | TEXT | Article title |
-| url | TEXT | Original article URL |
+| url | TEXT | Original article URL (unique) |
 | author | TEXT | Article author |
 | date_published | TIMESTAMPTZ | Original publish date |
 | original_content | TEXT | Scraped article content |
 | updated_content | TEXT | AI-transformed content |
-| status | VARCHAR(20) | Processing status |
+| status | TEXT | Processing status (pending, processing, completed, error) |
 | scraped_at | TIMESTAMPTZ | When article was scraped |
+| created_at | TIMESTAMPTZ | Record creation timestamp |
 | updated_at | TIMESTAMPTZ | Last update timestamp |
 
 ### `citations` Table
 | Column | Type | Description |
 |--------|------|-------------|
-| id | SERIAL | Primary key |
-| article_id | INTEGER | Foreign key to articles |
-| title | TEXT | Citation title |
-| url | TEXT | Citation URL |
-| relevant_quote | TEXT | Relevant quote from source |
+| id | UUID | Primary key |
+| article_id | UUID | Foreign key to articles |
+| source_title | TEXT | Citation title |
+| source_url | TEXT | Citation URL |
+| citation_text | TEXT | Relevant quote or text from source |
 | created_at | TIMESTAMPTZ | When citation was added |
 
 ### `scraping_logs` Table
 | Column | Type | Description |
 |--------|------|-------------|
-| id | SERIAL | Primary key |
+| id | UUID | Primary key |
 | started_at | TIMESTAMPTZ | Scraping start time |
 | completed_at | TIMESTAMPTZ | Scraping completion time |
 | articles_found | INTEGER | Number of articles found |
-| status | VARCHAR(20) | success or error |
+| status | TEXT | success or error |
 | error_message | TEXT | Error details if failed |
 
 ## Deployment
@@ -443,6 +523,33 @@ Once deployed, you can access:
 - Check OpenAI API usage limits and billing
 - Review API logs for specific error messages
 
+## Phase 2: Automated Transformation Script
+
+The Phase 2 script (`scripts/transform-article.ts`) automates the article transformation process:
+
+1. **Fetches Articles**: Retrieves pending articles from the API
+2. **Google Search**: Searches for each article title on Google
+3. **Scrapes References**: Extracts the first 2 blog/article links from search results
+4. **Scrapes Content**: Downloads and parses content from reference articles
+5. **AI Transformation**: Uses GPT-4o to transform the original article to match the style and formatting of reference articles
+6. **Publishes**: Updates the article via PUT API with transformed content
+7. **Citations**: Adds citations at the bottom referencing the reference articles
+
+### Running the Script
+
+\`\`\`bash
+# Ensure your Next.js dev server is running
+npm run dev
+
+# In another terminal, run the transformation script
+npx tsx scripts/transform-article.ts
+\`\`\`
+
+The script requires:
+- `OPENAI_API_KEY` - For LLM transformations
+- `SERP_API_KEY` or (`GOOGLE_API_KEY` + `GOOGLE_CX`) - For Google Search
+- `API_BASE_URL` - Your Next.js API base URL (default: http://localhost:3000)
+
 ## Future Enhancements
 
 - [ ] Scheduled cron jobs for automatic scraping
@@ -452,6 +559,8 @@ Once deployed, you can access:
 - [ ] Advanced filtering and sorting options
 - [ ] User authentication and multi-tenant support
 - [ ] Analytics dashboard with transformation metrics
+- [ ] Support for multiple Google Search providers
+- [ ] Rate limiting and error retry logic
 
 ## Contributing
 

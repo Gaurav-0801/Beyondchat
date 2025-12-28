@@ -44,16 +44,21 @@ export async function POST(req: Request) {
       for (const article of scrapedData) {
         try {
           const result = await sql`
-            INSERT INTO articles (title, url, original_content, status)
+            INSERT INTO articles (title, url, author, date_published, original_content, status, scraped_at)
             VALUES (
               ${article.title},
               ${article.url},
+              ${article.author || null},
+              ${article.date_published ? article.date_published.toISOString() : null},
               ${article.original_content},
-              'pending'
+              'pending',
+              NOW()
             )
             ON CONFLICT (url) DO UPDATE
             SET title = EXCLUDED.title,
                 original_content = EXCLUDED.original_content,
+                author = EXCLUDED.author,
+                date_published = EXCLUDED.date_published,
                 updated_at = NOW()
             RETURNING *
           `

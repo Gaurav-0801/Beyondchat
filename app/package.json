@@ -6,7 +6,8 @@
       "dev": "next dev",
       "build": "next build",
       "start": "next start",
-      "lint": "eslint ."
+      "lint": "eslint .",
+      "transform": "tsx scripts/transform-article.ts"
     },
     "dependencies": {
       "@hookform/resolvers": "^3.10.0",
@@ -72,6 +73,7 @@
       "@types/react-dom": "^19",
       "postcss": "^8.5",
       "tailwindcss": "^4.1.9",
+      "tsx": "^4.7.0",
       "tw-animate-css": "1.3.3",
       "typescript": "^5"
     }
