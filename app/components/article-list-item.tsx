@@ -6,7 +6,7 @@ import { Sparkles, ArrowRight, ExternalLink, Clock } from "lucide-react"
 import Link from "next/link"
 
 interface Article {
-  id: number
+  id: string
   title: string
   url: string
   original_content: string
@@ -90,3 +90,4 @@ export function ArticleListItem({ article, onClick }: ArticleListItemProps) {
     </Link>
   )
 }
+
