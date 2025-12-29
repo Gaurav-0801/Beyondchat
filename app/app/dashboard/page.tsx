@@ -39,15 +39,16 @@ export default function DashboardPage() {
       })
 
       if (!response.ok) {
-        throw new Error("Scraping failed")
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Scraping failed: ${response.status} ${response.statusText}`)
       }
 
       const result = await response.json()
       toast.success(`Successfully scraped ${result.count || 0} articles!`)
       await mutate()
-    } catch (error) {
+    } catch (error: any) {
       console.error("Scraping error:", error)
-      toast.error("Failed to scrape articles. Please try again.")
+      toast.error(error.message || "Failed to scrape articles. Please try again.")
     } finally {
       setScraping(false)
     }

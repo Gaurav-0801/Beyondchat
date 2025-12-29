@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Plus, LayoutDashboard, Settings, FileText } from "lucide-react"
 import Link from "next/link"
 
+export function DashboardHeader() {
   return (
     <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-card/50 backdrop-blur-md sticky top-0 z-50">
       <div className="flex items-center gap-8">
