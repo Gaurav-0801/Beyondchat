@@ -154,21 +154,33 @@ export async function scrapeArticles(url: string): Promise<ScrapedArticle[]> {
       })
     }
 
-    await sql`
-      INSERT INTO scraping_logs (started_at, completed_at, status, articles_found)
-      VALUES (${startedAt.toISOString()}, NOW(), 'success', ${articles.length})
-    `
+    // Log scraping success (optional - don't fail if table doesn't exist)
+    try {
+      await sql`
+        INSERT INTO scraping_logs (started_at, completed_at, status, articles_found)
+        VALUES (${startedAt.toISOString()}, NOW(), 'success', ${articles.length})
+      `
+    } catch (logError) {
+      // Logging is optional, don't fail scraping if table doesn't exist
+      console.warn("[v0] Could not log scraping result:", logError)
+    }
 
     console.log("[v0] Scraping complete. Found:", articles.length, "articles")
     return articles
   } catch (error) {
     console.error("[v0] Scraping error:", error)
 
-    await sql`
-      INSERT INTO scraping_logs (started_at, completed_at, status, articles_found, error_message)
-      VALUES (${startedAt.toISOString()}, NOW(), 'error', 0, ${String(error)})
-    `
+    // Log scraping error (optional - don't fail if table doesn't exist)
+    try {
+      await sql`
+        INSERT INTO scraping_logs (started_at, completed_at, status, articles_found, error_message)
+        VALUES (${startedAt.toISOString()}, NOW(), 'error', 0, ${String(error)})
+      `
+    } catch (logError) {
+      // Logging is optional, don't fail if table doesn't exist
+      console.warn("[v0] Could not log scraping error:", logError)
+    }
 
-    return []
+    throw error // Re-throw the original error so the API can handle it
   }
 }
