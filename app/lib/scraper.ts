@@ -11,9 +11,16 @@ export interface ScrapedArticle {
 
 async function fetchFullArticleContent(articleUrl: string): Promise<string> {
   try {
-    const response = await fetch(articleUrl)
+    const response = await fetch(articleUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+    })
     const html = await response.text()
     const $ = cheerio.load(html)
+
+    // Remove script, style, and other non-content elements
+    $("script, style, nav, footer, header, aside, .ad, .advertisement, .sidebar").remove()
 
     // Try to find main article content
     const contentSelectors = [
@@ -23,21 +30,39 @@ async function fetchFullArticleContent(articleUrl: string): Promise<string> {
       ".post-content",
       "main article",
       ".article-content",
+      "article",
+      ".content",
+      "[role='article']",
+      ".post-body",
+      ".blog-content",
     ]
 
     for (const selector of contentSelectors) {
-      const content = $(selector).first().text().trim()
-      if (content.length > 100) {
-        return content
+      const contentEl = $(selector).first()
+      if (contentEl.length > 0) {
+        // Remove unwanted elements
+        contentEl.find("script, style, nav, footer, header, aside, .ad, .advertisement, .sidebar, .social-share, .comments").remove()
+        const content = contentEl.text().trim()
+        if (content.length > 100) {
+          return content
+        }
       }
     }
 
-    // Fallback: get all paragraph text
-    return $("article p, .content p, main p")
-      .map((_, el) => $(el).text())
+    // Fallback: get all paragraph text from main content areas
+    const paragraphs = $("article p, .content p, main p, .post p")
+      .map((_, el) => $(el).text().trim())
       .get()
+      .filter(text => text.length > 20) // Filter out very short paragraphs
       .join("\n\n")
       .trim()
+    
+    if (paragraphs.length > 100) {
+      return paragraphs
+    }
+
+    // Last resort: get all text from body
+    return $("body").text().trim()
   } catch (error) {
     console.error(`[v0] Error fetching article content from ${articleUrl}:`, error)
     return ""
@@ -91,7 +116,11 @@ export async function scrapeArticles(url: string): Promise<ScrapedArticle[]> {
     const lastPageUrl = await findLastPageUrl(url)
     console.log("[v0] Fetching from last page:", lastPageUrl)
 
-    const response = await fetch(lastPageUrl)
+    const response = await fetch(lastPageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+    })
     const html = await response.text()
     const $ = cheerio.load(html)
 
@@ -103,43 +132,184 @@ export async function scrapeArticles(url: string): Promise<ScrapedArticle[]> {
       excerpt: string
     }> = []
 
-    // Collect all articles from the page
-    $(".elementor-post").each((_, element) => {
-      const title = $(element).find(".elementor-post__title").text().trim()
-      const link = $(element).find(".elementor-post__read-more").attr("href") || $(element).find("a").attr("href")
-      const excerpt = $(element).find(".elementor-post__excerpt").text().trim()
-      const author = $(element).find(".elementor-post-author").text().trim() || "BeyondChats Team"
-      const dateStr = $(element).find(".elementor-post-date").text().trim()
+    // Try multiple selectors for article containers
+    const articleSelectors = [
+      ".elementor-post",
+      "article",
+      ".post",
+      ".blog-post",
+      ".entry",
+      "[class*='post']",
+      "[class*='article']",
+      "main article",
+      ".blog-list article",
+      ".posts article",
+    ]
 
-      if (title && link) {
-        let datePublished: Date | undefined
-        if (dateStr) {
-          datePublished = new Date(dateStr)
-          if (isNaN(datePublished.getTime())) {
-            datePublished = undefined
+    let foundArticles = false
+    
+    for (const containerSelector of articleSelectors) {
+      const containers = $(containerSelector)
+      console.log(`[v0] Trying selector "${containerSelector}": found ${containers.length} elements`)
+      
+      if (containers.length > 0) {
+        containers.each((_, element) => {
+          // Try multiple selectors for title and link
+          const titleSelectors = [
+            ".elementor-post__title",
+            "h2 a", "h3 a", "h2", "h3", "h1",
+            ".entry-title", ".post-title", ".article-title",
+            "a[rel='bookmark']",
+            "[class*='title'] a",
+            "a[href*='/blogs/']",
+          ]
+          
+          let title = ""
+          let link = ""
+          
+          // First, try to find title and link together
+          for (const titleSel of titleSelectors) {
+            const titleEl = $(element).find(titleSel).first()
+            if (titleEl.length > 0) {
+              title = titleEl.text().trim()
+              link = titleEl.attr("href") || titleEl.closest("a").attr("href") || ""
+              if (title && link) break
+            }
+          }
+          
+          // Fallback: find any link in the container and get title from nearby heading
+          if (!link || !title) {
+            const linkEl = $(element).find("a[href*='/blogs/'], a[href*='blog']").first()
+            if (linkEl.length > 0) {
+              link = linkEl.attr("href") || ""
+              title = linkEl.text().trim() || $(element).find("h1, h2, h3, h4").first().text().trim()
+            }
+          }
+
+          // Try to find excerpt/description
+          const excerptSelectors = [
+            ".elementor-post__excerpt",
+            ".excerpt", ".entry-summary", ".post-excerpt",
+            "p", ".description",
+            "[class*='excerpt']", "[class*='summary']"
+          ]
+          
+          let excerpt = ""
+          for (const excerptSel of excerptSelectors) {
+            const excerptEl = $(element).find(excerptSel).first()
+            if (excerptEl.length > 0) {
+              excerpt = excerptEl.text().trim()
+              if (excerpt.length > 20) break
+            }
+          }
+
+          // Try to find author
+          const authorSelectors = [
+            ".elementor-post-author",
+            ".author", ".byline",
+            "[class*='author']",
+            "span:contains('By')",
+          ]
+          
+          let author = "BeyondChats Team"
+          for (const authorSel of authorSelectors) {
+            const authorEl = $(element).find(authorSel).first()
+            if (authorEl.length > 0) {
+              const authorText = authorEl.text().trim()
+              if (authorText && authorText.length > 0 && authorText.length < 50) {
+                author = authorText.replace(/^By\s+/i, "").trim()
+                break
+              }
+            }
+          }
+
+          // Try to find date
+          const dateSelectors = [
+            ".elementor-post-date",
+            ".date", "time", ".published",
+            "[class*='date']",
+            "[datetime]",
+          ]
+          
+          let dateStr = ""
+          for (const dateSel of dateSelectors) {
+            const dateEl = $(element).find(dateSel).first()
+            if (dateEl.length > 0) {
+              dateStr = dateEl.attr("datetime") || dateEl.text().trim()
+              if (dateStr) break
+            }
+          }
+
+          if (title && link) {
+            let datePublished: Date | undefined
+            if (dateStr) {
+              datePublished = new Date(dateStr)
+              if (isNaN(datePublished.getTime())) {
+                datePublished = undefined
+              }
+            }
+
+            // Make sure URL is absolute
+            const absoluteUrl = link.startsWith("http") ? link : new URL(link, url).toString()
+
+            allArticles.push({
+              title,
+              url: absoluteUrl,
+              author,
+              date_published: datePublished,
+              excerpt,
+            })
+            foundArticles = true
+          }
+        })
+        
+        if (foundArticles) {
+          console.log(`[v0] Successfully found articles using selector: "${containerSelector}"`)
+          break
+        }
+      }
+    }
+
+    if (allArticles.length === 0) {
+      console.warn("[v0] No articles found with any selector. Trying alternative approach...")
+      
+      // Alternative: Look for all links to blog posts
+      $("a[href*='/blogs/']").each((_, element) => {
+        const link = $(element).attr("href")
+        const title = $(element).text().trim() || $(element).find("h1, h2, h3").text().trim()
+        
+        if (link && title && title.length > 5) {
+          const absoluteUrl = link.startsWith("http") ? link : new URL(link, url).toString()
+          
+          // Check if we already have this article
+          if (!allArticles.find(a => a.url === absoluteUrl)) {
+            allArticles.push({
+              title,
+              url: absoluteUrl,
+              author: "BeyondChats Team",
+              date_published: undefined,
+              excerpt: "",
+            })
           }
         }
+      })
+      
+      console.log(`[v0] Found ${allArticles.length} articles using alternative approach`)
+    }
 
-        allArticles.push({
-          title,
-          url: link.startsWith("http") ? link : new URL(link, url).toString(),
-          author,
-          date_published: datePublished,
-          excerpt,
-        })
-      }
-    })
-
-    // Sort by date (oldest first) and take 5
+    // Sort by date (oldest first) and take 5, or just take first 5 if no dates
     const sortedArticles = allArticles
       .sort((a, b) => {
         const dateA = a.date_published?.getTime() || 0
         const dateB = b.date_published?.getTime() || 0
-        return dateA - dateB
+        if (dateA > 0 && dateB > 0) {
+          return dateA - dateB // Oldest first
+        }
+        return 0 // Keep original order if no dates
       })
       .slice(0, 5)
 
-    console.log(`[v0] Found ${allArticles.length} articles, selecting 5 oldest`)
+    console.log(`[v0] Found ${allArticles.length} articles total, selecting ${sortedArticles.length} articles`)
 
     // Fetch full content for each article
     const articles: ScrapedArticle[] = []
