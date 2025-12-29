@@ -3,8 +3,18 @@
 import { Button } from "@/components/ui/button"
 import { Plus, LayoutDashboard, Settings, FileText } from "lucide-react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 export function DashboardHeader() {
+  const pathname = usePathname()
+  
+  const isActive = (path: string) => {
+    if (path === "/dashboard") {
+      return pathname === "/dashboard" || pathname?.startsWith("/dashboard/")
+    }
+    return pathname === path
+  }
+
   return (
     <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-card/50 backdrop-blur-md sticky top-0 z-50">
       <div className="flex items-center gap-8">
@@ -13,10 +23,24 @@ export function DashboardHeader() {
           beyondchats
         </Link>
         <nav className="flex gap-6 text-sm font-medium">
-          <Link href="/dashboard" className="text-foreground flex items-center gap-2">
+          <Link 
+            href="/dashboard" 
+            className={`flex items-center gap-2 transition-colors ${
+              isActive("/dashboard") 
+                ? "text-foreground" 
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
             <LayoutDashboard className="w-4 h-4" /> Dashboard
           </Link>
-          <Link href="/articles" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
+          <Link 
+            href="/articles" 
+            className={`flex items-center gap-2 transition-colors ${
+              isActive("/articles") 
+                ? "text-foreground" 
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
             <FileText className="w-4 h-4" /> Articles
           </Link>
           <a href="#" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
