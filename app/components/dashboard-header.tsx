@@ -16,7 +16,7 @@ export function DashboardHeader() {
           <Link href="/dashboard" className="text-foreground flex items-center gap-2">
             <LayoutDashboard className="w-4 h-4" /> Dashboard
           </Link>
-          <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
+          <Link href="/articles" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
             <FileText className="w-4 h-4" /> Articles
           </Link>
           <a href="#" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">

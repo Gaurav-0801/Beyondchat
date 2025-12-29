@@ -76,15 +76,18 @@ export function ArticleListItem({ article, onClick }: ArticleListItemProps) {
             )}
           </div>
           <div className="flex items-center gap-2 text-muted-foreground group-hover:text-primary transition-colors">
-            <a
-              href={article.url}
-              target="_blank"
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                window.open(article.url, "_blank", "noopener,noreferrer")
+              }}
               className="p-1.5 hover:bg-white/5 rounded transition-colors"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
+              aria-label="Open article in new tab"
             >
               <ExternalLink className="w-4 h-4" />
-            </a>
+            </button>
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>
         </div>
