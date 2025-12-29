@@ -6,6 +6,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params
 
+    // Check if OPENAI_API_KEY is set
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json({ 
+        error: "OPENAI_API_KEY environment variable is not set. Please configure your OpenAI API key in your environment variables." 
+      }, { status: 500 })
+    }
+
     const articles = await sql`
       SELECT * FROM articles WHERE id = ${id}
     `
@@ -51,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ...result,
       status: "completed",
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error("[v0] Transformation error:", error)
 
     const { id } = await params
@@ -61,7 +68,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       WHERE id = ${id}
     `
 
-    return NextResponse.json({ error: "Transformation failed" }, { status: 500 })
+    // Provide more detailed error message
+    let errorMessage = "Transformation failed"
+    if (error?.message) {
+      errorMessage = error.message
+      // Check for common OpenAI API errors
+      if (error.message.includes("API key") || error.message.includes("authentication")) {
+        errorMessage = "Invalid or missing OpenAI API key. Please check your OPENAI_API_KEY environment variable."
+      } else if (error.message.includes("rate limit") || error.message.includes("quota")) {
+        errorMessage = "OpenAI API rate limit exceeded. Please try again later."
+      } else if (error.message.includes("model")) {
+        errorMessage = "OpenAI model error. Please check your API configuration."
+      }
+    }
+
+    return NextResponse.json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined
+    }, { status: 500 })
   }
 }
 
