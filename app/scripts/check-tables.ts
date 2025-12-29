@@ -1,24 +1,87 @@
 // Load environment variables first
-import { readFileSync, existsSync } from "fs"
+import { readFileSync, existsSync, statSync } from "fs"
 import { join } from "path"
 import { neon } from "@neondatabase/serverless"
 
-// Load .env.local if it exists
-const envPath = join(process.cwd(), ".env.local")
+// Try multiple possible locations for .env files
+const possiblePaths = [
+  join(process.cwd(), ".env.local"),           // .env.local in current directory
+  join(process.cwd(), ".env"),                // .env in current directory
+  join(process.cwd(), "app", ".env.local"),   // app/.env.local
+  join(process.cwd(), "app", ".env"),         // app/.env
+]
+
+let envPath: string | null = null
+for (const path of possiblePaths) {
+  if (existsSync(path)) {
+    const stats = statSync(path)
+    if (stats.size > 0) {
+      console.log(`Found env file at: ${path} (size: ${stats.size} bytes)`)
+      envPath = path
+      break
+    } else {
+      console.log(`Found empty file at: ${path}, skipping...`)
+    }
+  }
+}
+
+if (!envPath) {
+  console.log("Checking for .env files in:")
+  possiblePaths.forEach(p => {
+    const exists = existsSync(p)
+    if (exists) {
+      const stats = statSync(p)
+      console.log(`  - ${p} (exists: true, size: ${stats.size} bytes)`)
+    } else {
+      console.log(`  - ${p} (exists: false)`)
+    }
+  })
+  console.error("\n✗ No .env or .env.local file found with content")
+  console.error("Please save your .env.local file with DATABASE_URL")
+  process.exit(1)
+}
+console.log(`Looking for .env.local at: ${envPath}`)
+
 if (existsSync(envPath)) {
+  console.log("Found .env.local, loading...")
   const envFile = readFileSync(envPath, "utf-8")
-  envFile.split("\n").forEach((line) => {
+  console.log(`File length: ${envFile.length} chars`)
+  console.log(`First 200 chars: ${envFile.substring(0, 200)}`)
+  
+  const lines = envFile.split(/\r?\n/)
+  console.log(`Found ${lines.length} lines in .env.local`)
+  
+  lines.forEach((line, index) => {
     const trimmed = line.trim()
     if (trimmed && !trimmed.startsWith("#")) {
-      const [key, ...valueParts] = trimmed.split("=")
-      if (key && valueParts.length > 0) {
-        const value = valueParts.join("=").trim().replace(/^["']|["']$/g, "")
-        if (!process.env[key.trim()]) {
-          process.env[key.trim()] = value
+      // Handle both KEY=value and KEY='value' formats
+      const equalIndex = trimmed.indexOf("=")
+      if (equalIndex > 0) {
+        const key = trimmed.substring(0, equalIndex).trim()
+        let value = trimmed.substring(equalIndex + 1).trim()
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || 
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1)
         }
+        if (key && value) {
+          process.env[key] = value
+          console.log(`✓ Loaded: ${key} (value length: ${value.length})`)
+        } else {
+          console.log(`✗ Skipped line ${index + 1}: key="${key}", value empty`)
+        }
+      } else {
+        console.log(`✗ No = found in line ${index + 1}: "${trimmed.substring(0, 50)}"`)
       }
     }
   })
+  
+  console.log(`\nDATABASE_URL is set: ${!!process.env.DATABASE_URL}`)
+  if (process.env.DATABASE_URL) {
+    console.log(`DATABASE_URL starts with: ${process.env.DATABASE_URL.substring(0, 30)}...`)
+  }
+} else {
+  console.log(".env.local not found at:", envPath)
 }
 
 async function checkTables() {
