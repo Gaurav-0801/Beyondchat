@@ -56,14 +56,16 @@ export function ArticleListItem({ article, onClick }: ArticleListItemProps) {
           </Badge>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="w-3 h-3" />
-            {new Date(article.scraped_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            {article.scraped_at instanceof Date 
+              ? article.scraped_at.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+              : new Date(article.scraped_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
           </div>
         </div>
         <h3 className="font-bold text-lg mb-2 line-clamp-2 leading-tight group-hover:text-primary transition-colors">
           {article.title}
         </h3>
         <p className="text-sm text-muted-foreground/80 line-clamp-2 mb-4 leading-relaxed">
-          {article.original_content.substring(0, 120)}...
+          {article.original_content ? (article.original_content.length > 120 ? article.original_content.substring(0, 120) + "..." : article.original_content) : "No content available"}
         </p>
         <div className="flex items-center justify-between pt-2 border-t border-white/5">
           <div className="flex gap-2">

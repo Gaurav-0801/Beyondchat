@@ -20,7 +20,14 @@ interface Article {
   scraped_at: string
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: `Failed to fetch: ${res.status} ${res.statusText}` }))
+    throw new Error(error.error || `Failed to fetch: ${res.status}`)
+  }
+  return res.json()
+}
 
 export default function DashboardPage() {
   const { data: articles, error, isLoading, mutate } = useSWR<Article[]>("/api/articles", fetcher)
@@ -55,7 +62,7 @@ export default function DashboardPage() {
   }
 
   const filteredArticles = articles?.filter((article) =>
-    article.title.toLowerCase().includes(searchQuery.toLowerCase())
+    article?.title?.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const stats = {
@@ -147,21 +154,23 @@ export default function DashboardPage() {
           </Card>
         ) : filteredArticles && filteredArticles.length > 0 ? (
           <div className="grid gap-4">
-            {filteredArticles.map((article) => (
-              <ArticleListItem
-                key={article.id}
-                article={{
-                  id: article.id,
-                  title: article.title,
-                  url: article.url,
-                  original_content: article.original_content,
-                  updated_content: article.updated_content,
-                  status: article.status,
-                  scraped_at: new Date(article.scraped_at),
-                }}
-                onClick={() => {}}
-              />
-            ))}
+            {filteredArticles
+              .filter((article) => article?.id && article?.title && article?.url)
+              .map((article) => (
+                <ArticleListItem
+                  key={article.id}
+                  article={{
+                    id: article.id,
+                    title: article.title || "Untitled",
+                    url: article.url || "#",
+                    original_content: article.original_content || "",
+                    updated_content: article.updated_content || null,
+                    status: article.status || "pending",
+                    scraped_at: article.scraped_at ? new Date(article.scraped_at) : new Date(),
+                  }}
+                  onClick={() => {}}
+                />
+              ))}
           </div>
         ) : (
           <Card className="p-12 text-center border border-dashed border-white/10 rounded-xl">

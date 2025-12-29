@@ -32,7 +32,14 @@ interface Citation {
   created_at: string
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: `Failed to fetch: ${res.status} ${res.statusText}` }))
+    throw new Error(error.error || `Failed to fetch: ${res.status}`)
+  }
+  return res.json()
+}
 
 function ArticleDetailContent({ articleId }: { articleId: string }) {
   const { data: article, error, isLoading, mutate } = useSWR<Article>(`/api/articles/${articleId}`, fetcher)
